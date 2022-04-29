@@ -4,9 +4,6 @@ library(tidyverse)
 library(knitr)
 library(dplyr)
 
-idxSongID = "4pP4SPB221OGmvyb7ssaTa"
-
-
 # En primer lugar tenemos que abrir un archivo que contiene nombres de canciones 
 # con todos los datos que necesitaremos para crear los modelos
 dfSongs<- readRDS("~/Desktop/GIT/Minería de Datos/Proyecto_1_Mineria/Proyecto1_mineriadedatois/beats.rds")
@@ -85,4 +82,69 @@ cluster_ = unique(specificSong$cluster)
 # creamos un Dataframe que solo contiene canciones del cluster correspondiente al 
 # cluster de la canción seleccionada
 dfModel1_selec <- dfModel1 %>% filter(cluster == cluster_)
+
+
+
+#####################################################################################
+
+model1 <- dfSNum[, c("energy", "valence", "danceability", "acousticness")]
+
+# Vamos a ver como evoluciona la suma de cuadrados intra-cluster 
+# en la medida que aumentamos el numero de k
+SSinterior <- numeric(50)
+
+for(k in 1:50){
+  modelo <- kmeans(model1, centers = k)
+  SSinterior[k] <- modelo$tot.withinss
+}
+
+SSinterior
+
+plot(SSinterior)
+
+ggplot() + geom_point(aes(x = 1:50, y = SSinterior), color = 'blue') + 
+  geom_line(aes(x = 1:50, y = SSinterior), color = 'blue') + 
+  ggtitle("M?todo del Codo") + 
+  xlab('Cantidad de Centroides k') + 
+  ylab('WCSS')
+
+
+
+modelo_kmeans <- kmeans(model1, centers = 9)
+modelo_kmeans
+
+
+# agregamos la información de a que cluster corresponde cada punto y también 
+# la columna index para posteriormente mergear deModel1 y dfSongs
+dfModel1 <- dfSNum[, c("index", "energy", "valence", "danceability", "acousticness")]
+
+# creo la variable cluster en la tabla model1
+dfModel1$cluster <- modelo_kmeans$cluster %>% as.factor()
+
+dfModel1$cluster
+head(dfModel1)
+
+
+# juntamos dfModel1 y dfSongs para tener la información de a que cluster pertenece cada canción 
+dfModel1 <- merge(dfModel1, dfSongs, by = 'index')
+
+# buscamos la cancion elegida
+specificSong = dfModel1 %>% filter_all(any_vars(. %in% c(idxSongID)))
+# conseguimos el número de cluster de la canción
+cluster_ = unique(specificSong$cluster)
+
+# creamos un Dataframe que solo contiene canciones del cluster correspondiente al 
+# cluster de la canción seleccionada
+dfModel1_selec <- dfModel1 %>% filter(cluster == cluster_)
+
+
+
+
+
+
+###############################################################################
+# MODELO 2
+
+dfModel2 <- dfSNum[, c("danceability")]
+
 
