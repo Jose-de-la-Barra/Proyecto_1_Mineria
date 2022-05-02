@@ -1,3 +1,16 @@
+# Este archivo contiene todo el proceso de eleccion de los modelos, los hiperparámetros,
+# la limpieza de datos, etc. para hacer clusterización a los datos de Spotify entregados
+# y así generar un archivo con canciones relacionadas
+
+# Es importamte mencionar que si bien este script SI genera un archivo de salida con las canciones 
+# relacionadas, menu.r ocupa la función que está en "Funcion_principal.R" para generar la lista con 
+# las canciones relacionadas a la ingresada.
+
+# Como último punto importante, hay que mencionar que no si hicieron tantos plots. Esto es más que 
+# nada porque la cantidad de datos con los que se está trabajando demandan demaciada capacidad de cómputo 
+# lo que se traduce a mucho timpo de estera a la hora de graficar. 
+# Sin embargo, si se hicieron los análisis y comentarios correspondientes para cada modelo.
+
 library(devtools)
 library(spotifyr)
 library(tidyverse)
@@ -12,9 +25,10 @@ dfSongs<- readRDS(file.choose())
 head(dfSongs)
 dim(dfSongs)
 
-# sacamos una mustra de el DataFrame original ya que en la reducción de dimensionalidad
-# se necesita mucha capacidad de cómputo como para hacerla con las 447622 filas 
-dfSongs <- dfSongs[1:20000,]
+# sacamos una muestra del DataFrame original ya que, al hacer la reducción de dimensionalidad
+# con las 447622 filas del DataFrame original, se necesita una capacidad de cómputo 
+# que requiere un tiempo considerable (al igual que con otras funciones que están en el modelo a utilizar)
+dfSongs <- dfSongs[0:50000,]
 
 # LIMPIEZA DE DATOS
 
@@ -38,12 +52,11 @@ dfSNum <- dplyr::select(dfSNum, -key, -mode, -time_signature, -duration_ms, -tra
 
 # Normalizamos la data numérica
 dfSNum = scale(dfSNum)  
-  as_tibble()
 
 
 # REDUCCIÓN DE DIMENSIONALIDAD DEL DATAFRAMEN NUMÉRICO
 # install.packages("Rtsne")
-# library(Rtsne)
+library(Rtsne)
 
 set.seed(1)
 tsne <- Rtsne(dfSNum, k = 2, initial_dims = 9, check_duplicates= FALSE)
@@ -54,14 +67,7 @@ dfSNum <- data.frame(dfSNum)
 # para relacionarlas de una forma facil
 dfSongs <- tibble::rowid_to_column(dfSongs, "index")
 dfSNum <- tibble::rowid_to_column(dfSNum, "index")
-
 summary(dfSNum)
-
-# Por último, calculamos la estadística de hopkings para ver la capacidad de 
-# clusterizción del DataFrame numérico
-library(factoextra)
-res <- get_clust_tendency(dfSNum, n = nrow(dfSNum)-1, graph = FALSE)
-res$hopkins_stat
 
 # Ahora está todo listo para trabajar con los datos
 
@@ -75,7 +81,7 @@ dfModel1 <- dfSNum[, c("X1", "X2")]
 kNNdistplot(dfModel1, k = 15) # elejimos k=15 ya que este es un número de clusters
 # acorde al contexto en el cual estamos trabajando
 abline(h = 1.6,  lty = 2)  # elejimos eps = 1.6 ya que a partir de este valor aproximadamente
-                           # (en el eje y) se comienza a ver un comportamiento exponencial en el gráfico
+# (en el eje y) se comienza a ver un comportamiento exponencial en el gráfico
 model1 = dbscan(dfModel1, eps = 1.6, minPts = 15)
 
 model1
@@ -127,7 +133,7 @@ head(dfModel1)
 dfModel1 <- merge(dfModel1, dfSongs, by = 'index')
 
 # buscamos la cancion elegida
-specificSong = dfModel1 %>% filter_all(any_vars(. %in% c(idxSongID)))
+specificSong = dfModel1 %>% filter_all(any_vars(. %in% c(idxSong)))
 # conseguimos el número de cluster de la canción
 cluster_ = unique(specificSong$cluster1)
 
@@ -155,8 +161,9 @@ dfModel2 <- dfSNum[, c("X1", "X2")]
 mc = Mclust(dfModel2)
 
 # Este plot nos muestra cual es el mejor k parea el modelo (punto de quebre)
-plot(mc)  # en BIC, el valor más alto en el eje de las ordenadas se consigue con VVV 
+# plot(mc)  # en BIC, el valor más alto en el eje de las ordenadas se consigue con VVV 
 # y el número de componentes (clusters) es 9
+# La función esta comentada porque requiere interactuar con la consola
 
 summary(mc)  # acá nos aparecen los hiperparámetros con los que se consigue 
 # una mejor clustarización: Mclust VVV (ellipsoidal, varying volume, shape, 
@@ -176,7 +183,7 @@ head(dfModel2)
 dfModel2 <- merge(dfModel2, dfSongs, by = 'index')
 
 # buscamos la cancion elegida
-specificSong = dfModel2 %>% filter_all(any_vars(. %in% c(idxSongID)))
+specificSong = dfModel2 %>% filter_all(any_vars(. %in% c(idxSong)))
 # conseguimos el número de cluster de la canción
 cluster_2 = unique(specificSong$cluster)
 
@@ -186,17 +193,18 @@ dfModel2 <- dfModel2 %>% filter(cluster2 == cluster_2)
 
 
 ################################################################################
+# Creación del archivo de salida
 
 dfFinal_1 <- dfModel1[, c("artist_name", "track_name", "duration_ms", "track_id")]
 dfFinal_2 <- dfModel2[, c("artist_name", "track_name", "duration_ms", "track_id")]
 
-# DaraFrame con las filas comunes entre dfModel1 y dfModel2
-# dfComun = intersect(dfFinal_1, dfFinal_2)
-
+# En esta ocación ocuparemos solamente el modelo que ocupa GMM (modelo 2) ya que este modelo, se 
+# comporta de una mejor manera cuando hay una gran densidad de datios que se pueden 
+# agrupar de múltiples formas distintas.
 
 # Para conseguir el tiempo que está en milisegundos en minutos, hay que dividir 
 # el valor de tiempo entre 3600000
-dfFinal_2$duration_ms <- (dfFinal_2$duration_ms)/60000
+dfFinal_2$duration_ms <- (dfFinal_2$duration_ms)/60000  # pasamos de ms a segundos
 # cambiamos el nombre de la columna
 dfFinal_2 <- dfFinal_2%>% rename(duration_min = duration_ms)
 
@@ -206,7 +214,7 @@ dfFinal_2 <- tibble::rowid_to_column(dfFinal_2, "index")
 
 
 # buscamos la cancion elegida
-specificSong = dfFinal_2 %>% filter_all(any_vars(. %in% c(idxSongID)))
+specificSong = dfFinal_2 %>% filter_all(any_vars(. %in% c(idxSong)))
 # conseguimos la duración de la canción
 time_ = unique(specificSong$duration_min)  
 
@@ -224,13 +232,10 @@ dfOut <- data.frame(  # creamos el df n donde se encontrará la playlist final
   "track_name" = specificSong$track_name,
   "duration_min" = ((specificSong$duration_min))
 )
-
-# Data frame to list
 dfOut <- as.list(dfOut)
 
-
 indx = 1
-while(time_ <= 180) { # tener en cuenta que 3 horas son 180 minutos
+while(time_ <= 180 ) { # tener en cuenta que 3 horas son 180 minutos
   
   actual_indx = indx_canciones_elegidas[indx, ] # agarramos un número de la matriz de números aleatorios
   current_song = filter(dfFinal_2, index == actual_indx) # en la columna index, buscamos el número aleatorio para encontrar la canción específica que se agregará en esta iteración
@@ -239,7 +244,7 @@ while(time_ <= 180) { # tener en cuenta que 3 horas son 180 minutos
   dfOut$artist_name <- rbind(dfOut$artist_name, current_song$artist_name)
   dfOut$track_name <- rbind(dfOut$track_name, current_song$track_name)
   dfOut$duration_min <- rbind(dfOut$duration_min, current_song$duration_min)
-
+  
   indx = indx + 1 # acualizamos index
   time_ = (time_ + current_song$duration_min) # actualizamos el tiempo total (la suma de todos los tiempos)
 }
@@ -247,5 +252,5 @@ while(time_ <= 180) { # tener en cuenta que 3 horas son 180 minutos
 # Convert to data.frame
 dfOut <- data.frame(dfOut, stringsAsFactors = FALSE)
 
-
-
+# escribimos el archivo de salida con las canciones 
+write.table(dfOut, file = "playlist.txt", sep=",", row.names=FALSE)
